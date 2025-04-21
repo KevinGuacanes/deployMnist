@@ -2,10 +2,11 @@ import streamlit as st
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import load_model
+import matplotlib.pyplot as plt
+import imageio
 from PIL import Image
 import io
-from scipy import ndimage
-import matplotlib.pyplot as plt
+import cv2
 
 # Configurar la página
 st.set_page_config(page_title="Reconocimiento de Dígitos MNIST", layout="centered")
@@ -17,56 +18,71 @@ except Exception as e:
     st.error(f"Error al cargar el modelo: {e}")
     st.stop() # Detiene la ejecución si no se carga el modelo
 
+# Función para preprocesar la imagen
 def preprocess_image(uploaded_file):
     """
-    Lee una imagen subida, la convierte a escala de grises, la redimensiona
-    y la prepara para la entrada al modelo.
+    Lee una imagen subida, la convierte a escala de grises, encuentra el bounding box del dígito,
+    redimensiona a 28x28 y la prepara para la entrada al modelo.
     """
-    try:
-        # Leer la imagen desde el archivo subido
-        img_bytes = uploaded_file.read()
-        img = Image.open(io.BytesIO(img_bytes))
+    # Leer la imagen con OpenCV
+    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+    img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+    
+    # Convertir a escala de grises
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    
+    # Mostrar la imagen original en escala de grises
+    st.subheader("Imagen en escala de grises")
+    st.image(gray, caption='Imagen en escala de grises', use_column_width=True)
+    
+    # Aplicar umbral para binarizar la imagen (números negros sobre fondo blanco)
+    _, binary = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY_INV)
+    
+    # Encontrar contornos para detectar el dígito
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    if contours:
+        # Encontrar el contorno más grande (asumiendo que es el dígito)
+        main_contour = max(contours, key=cv2.contourArea)
         
-        # Convertir a escala de grises
-        img = img.convert('L')
+        # Obtener el bounding box
+        x, y, w, h = cv2.boundingRect(main_contour)
         
-        # Mostrar la imagen original convertida a escala de grises
-        st.image(img, caption='Imagen Original en Escala de Grises', width=200)
+        # Dibujar el bounding box en la imagen original
+        bbox_img = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+        cv2.rectangle(bbox_img, (x, y), (x+w, y+h), (0, 255, 0), 2)
         
-        # Redimensionar a 28x28 pixels
-        img = img.resize((28, 28), Image.Resampling.LANCZOS)
+        # Mostrar la imagen con el bounding box
+        st.subheader("Bounding Box detectado")
+        st.image(bbox_img, caption='Bounding Box del dígito', use_column_width=True)
         
-        # Convertir a array de numpy
-        gray = np.array(img)
+        # Extraer solo el área del dígito con un pequeño margen
+        margin = 5
+        x_min = max(0, x - margin)
+        y_min = max(0, y - margin)
+        x_max = min(gray.shape[1], x + w + margin)
+        y_max = min(gray.shape[0], y + h + margin)
+        
+        digit_roi = binary[y_min:y_max, x_min:x_max]
+        
+        # Mostrar la región de interés (ROI) del dígito
+        st.subheader("Región de interés (ROI)")
+        st.image(digit_roi, caption='ROI del dígito', use_column_width=True)
+        
+        # Redimensionar a 28x28 para el modelo MNIST
+        digit_resized = cv2.resize(digit_roi, (28, 28), interpolation=cv2.INTER_AREA)
         
         # Mostrar la imagen redimensionada
-        st.image(gray, caption='Imagen Redimensionada a 28x28', width=150)
+        st.subheader("Imagen procesada (28x28)")
+        st.image(digit_resized, caption='Imagen redimensionada a 28x28', use_column_width=True)
         
-        # Normalizar a [0,1]
-        gray = gray.astype(np.float32) / 255.0
+        # Preparar para el modelo
+        processed = digit_resized.reshape(1, 28, 28, 1)
+        processed = processed.astype(np.float32) / 255.0
         
-        # Invertir si es necesario (MNIST tiene fondo negro y dígitos blancos)
-        if gray.mean() > 0.5:  # Si la imagen es mayormente blanca
-            gray = 1.0 - gray
-            st.image(gray, caption='Imagen Invertida', width=150)
-        
-        # Centrar el dígito usando centro de masa
-        cy, cx = ndimage.center_of_mass(gray)
-        rows, cols = gray.shape
-        shift_y = rows//2 - cy
-        shift_x = cols//2 - cx
-        
-        # Aplicar desplazamiento para centrar
-        gray = ndimage.shift(gray, (shift_y, shift_x), cval=0)
-        st.image(gray, caption='Imagen Centrada (Formato MNIST)', width=150)
-        
-        # Redimensionar a formato adecuado para el modelo
-        gray = gray.reshape(1, 28, 28, 1)
-        
-        return gray
-        
-    except Exception as e:
-        st.error(f"Error al procesar la imagen: {e}")
+        return processed
+    else:
+        st.error("No se detectaron contornos en la imagen. Asegúrate de que el dígito sea visible.")
         return None
 
 # Título de la app
@@ -78,15 +94,14 @@ uploaded_file = st.file_uploader("Selecciona una imagen (PNG, JPG o JPEG)", type
 
 # Contenedor principal para mostrar imagen y predicción
 if uploaded_file is not None:
-    # Crear una copia para mostrar la imagen original
-    uploaded_file_copy = uploaded_file.copy()
-    
     # Mostrar la imagen original
-    st.image(uploaded_file_copy, caption='Imagen Original Subida', use_container_width=True)
-    
+    image_data = uploaded_file.getvalue()
+    uploaded_file.seek(0)  # Reiniciar el puntero del archivo para usarlo nuevamente
+    st.subheader("Imagen Original")
+    st.image(image_data, caption='Imagen Subida', use_column_width=True)
+
     # Procesar la imagen
-    with st.spinner('Procesando imagen...'):
-        processed_image = preprocess_image(uploaded_file)
+    processed_image = preprocess_image(uploaded_file)
 
     if processed_image is not None:
         # Realizar predicción
@@ -102,24 +117,14 @@ if uploaded_file is not None:
 
         # Opcional: Mostrar las probabilidades de cada dígito
         if st.checkbox("Mostrar probabilidades por dígito"):
-            st.write("Probabilidades para cada dígito:")
-            probabilities = prediction[0]
-            # Crear un gráfico de barras para visualizar las probabilidades
-            fig, ax = plt.subplots(figsize=(10, 5))
-            digits = np.arange(10)
-            ax.bar(digits, probabilities)
-            ax.set_xticks(digits)
-            ax.set_xlabel('Dígito')
-            ax.set_ylabel('Probabilidad')
-            ax.set_title('Probabilidad por dígito')
-            st.pyplot(fig)
-            
-            # También mostrar como valores numéricos
-            prob_dict = {str(i): f"{prob*100:.2f}%" for i, prob in enumerate(probabilities)}
-            st.json(prob_dict)
+             st.write("Probabilidades para cada dígito:")
+             probabilities = prediction[0]
+             # Crear un diccionario o lista de tuplas para facilitar la visualización
+             prob_dict = {str(i): float(prob) for i, prob in enumerate(probabilities)}
+             st.json(prob_dict)
 
 
-# Información adicional y del proyecto
+# Información adicional y del proyecto (ahora en el cuerpo principal)
 st.markdown("---") # Separador visual
 
 st.header("Información del Proyecto")
@@ -133,8 +138,9 @@ with st.expander("Ver detalles del proyecto"):
 
         Cómo Usar la Aplicación:
         1. Sube una imagen que contenga un dígito (debe ser en formato PNG, JPG o JPEG).
-        2. La aplicación procesará la imagen y mostrará el dígito predicho por el modelo junto con la confianza.
-        3. Opcionalmente, puedes ver las probabilidades que el modelo asignó a cada dígito.
+        2. La aplicación procesará la imagen, la convertirá a escala de grises, detectará el bounding box del dígito y lo redimensionará a 28x28.
+        3. El modelo analizará la imagen procesada y mostrará el dígito predicho junto con la confianza.
+        4. Opcionalmente, puedes ver las probabilidades que el modelo asignó a cada dígito.
     """)
 
 st.header("Equipo de Desarrollo")
