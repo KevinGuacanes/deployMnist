@@ -12,6 +12,7 @@ st.set_page_config(page_title="Reconocimiento de Dígitos MNIST", layout="center
 # Cargar el modelo (asegúrate de que la ruta sea correcta)
 try:
     model = load_model('models/model_Mnist_LeNet.h5')
+    st.success("Modelo cargado exitosamente.")
 except Exception as e:
     st.error(f"Error al cargar el modelo: {e}")
     st.stop() # Detiene la ejecución si no se carga el modelo
@@ -22,29 +23,36 @@ def preprocess_image(uploaded_file):
     Lee una imagen subida, la convierte a escala de grises, la redimensiona
     y la prepara para la entrada al modelo.
     """
-    # Usar imageio para leer la imagen del archivo BytesIO
+    st.write("Paso 1: Cargando la imagen...")
     img = imageio.imread(uploaded_file)
+    st.write("Imagen cargada con éxito.")
 
     # Asegurarse de que la imagen es RGB si tiene 3 canales antes de convertir a gris
     if len(img.shape) == 3 and img.shape[2] == 3:
+        st.write("Paso 2: Convirtiendo la imagen a escala de grises...")
         gray = np.dot(img[...,:3], [0.299, 0.587, 0.114]) # Convertir a escala de grises
     elif len(img.shape) == 3 and img.shape[2] == 4: # Si es RGBA
-         gray = np.dot(img[...,:3], [0.299, 0.587, 0.114]) # Ignorar canal alfa
+        st.write("Paso 2: Convirtiendo la imagen a escala de grises (ignorando canal alfa)...")
+        gray = np.dot(img[...,:3], [0.299, 0.587, 0.114]) # Ignorar canal alfa
     elif len(img.shape) == 2: # Si ya está en escala de grises
+        st.write("La imagen ya está en escala de grises.")
         gray = img
     else:
-         st.error("Formato de imagen no soportado.")
-         return None
+        st.error("Formato de imagen no soportado.")
+        return None
 
     # Redimensionar la imagen si no es 28x28
     if gray.shape != (28, 28):
-        # Redimensionar la imagen usando Pillow para evitar distorsiones
+        st.write("Paso 3: Redimensionando la imagen a 28x28 píxeles...")
         pil_img = Image.fromarray(gray.astype(np.uint8))  # Convertir a imagen PIL
         pil_img_resized = pil_img.resize((28, 28), Image.Resampling.LANCZOS) # Redimensionar a 28x28
         gray = np.array(pil_img_resized)
+        st.write("Imagen redimensionada exitosamente.")
 
+    # Normalizar la imagen
     gray = gray.reshape(1, 28, 28, 1) # Añadir dimensiones de batch y canal
     gray = gray.astype(np.float32) / 255.0 # Normalizar
+    st.write("Imagen normalizada para la entrada del modelo.")
     return gray
 
 # Título de la app
@@ -68,6 +76,7 @@ if uploaded_file is not None:
             prediction = model.predict(processed_image)
             predicted_label = np.argmax(prediction)
             confidence = np.max(prediction) * 100 # Obtener confianza en porcentaje
+            st.write("Predicción realizada.")
 
         # Mostrar el resultado de la predicción en un formato destacado
         st.subheader("Resultado de la predicción:")
@@ -81,7 +90,6 @@ if uploaded_file is not None:
              # Crear un diccionario o lista de tuplas para facilitar la visualización
              prob_dict = {str(i): prob for i, prob in enumerate(probabilities)}
              st.json(prob_dict)
-
 
 # Información adicional y del proyecto (ahora en el cuerpo principal)
 st.markdown("---") # Separador visual
