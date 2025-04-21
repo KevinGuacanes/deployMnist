@@ -122,4 +122,4 @@ st.markdown("""
 
 st.markdown("---") # Otro separador
 
-st.info("Esta aplicación utiliza un modelo de Deep Learning para reconocer dígitos escritos a mano.")
+st.info("Esta aplicación utiliza un modelo de Deep Learning para reconocer dígitos escritos a mano. ")
