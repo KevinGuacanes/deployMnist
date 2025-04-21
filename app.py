@@ -2,8 +2,9 @@ import streamlit as st
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import load_model
-import imageio
-from PIL import Image # Se utiliza para redimensionar imágenes
+# No es necesario importar image de tensorflow.keras.preprocessing para este caso
+import matplotlib.pyplot as plt # Aunque no se usa en el código proporcionado, lo mantengo por si acaso.
+import imageio # Usaremos imageio para leer la imagen
 
 # Configurar la página
 st.set_page_config(page_title="Reconocimiento de Dígitos MNIST", layout="centered")
@@ -11,7 +12,6 @@ st.set_page_config(page_title="Reconocimiento de Dígitos MNIST", layout="center
 # Cargar el modelo (asegúrate de que la ruta sea correcta)
 try:
     model = load_model('models/model_Mnist_LeNet.h5')
-    st.success("Modelo cargado exitosamente.")
 except Exception as e:
     st.error(f"Error al cargar el modelo: {e}")
     st.stop() # Detiene la ejecución si no se carga el modelo
@@ -22,39 +22,40 @@ def preprocess_image(uploaded_file):
     Lee una imagen subida, la convierte a escala de grises, la redimensiona
     y la prepara para la entrada al modelo.
     """
-    st.write("Paso 1: Cargando la imagen...")
+    # Usar imageio para leer la imagen del archivo BytesIO
     img = imageio.imread(uploaded_file)
-    st.image(img, caption='Imagen Original', use_container_width=True)  # Mostrar imagen original
 
     # Asegurarse de que la imagen es RGB si tiene 3 canales antes de convertir a gris
     if len(img.shape) == 3 and img.shape[2] == 3:
-        st.write("Paso 2: Convirtiendo la imagen a escala de grises...")
         gray = np.dot(img[...,:3], [0.299, 0.587, 0.114]) # Convertir a escala de grises
-        st.image(gray, caption='Imagen en Escala de Grises', use_container_width=True)  # Mostrar imagen en grises
     elif len(img.shape) == 3 and img.shape[2] == 4: # Si es RGBA
-        st.write("Paso 2: Convirtiendo la imagen a escala de grises (ignorando canal alfa)...")
-        gray = np.dot(img[...,:3], [0.299, 0.587, 0.114]) # Ignorar canal alfa
-        st.image(gray, caption='Imagen en Escala de Grises', use_container_width=True)  # Mostrar imagen en grises
+         gray = np.dot(img[...,:3], [0.299, 0.587, 0.114]) # Ignorar canal alfa
     elif len(img.shape) == 2: # Si ya está en escala de grises
-        st.write("La imagen ya está en escala de grises.")
         gray = img
-        st.image(gray, caption='Imagen en Escala de Grises', use_container_width=True)  # Mostrar imagen en grises
     else:
-        st.error("Formato de imagen no soportado.")
-        return None
+         st.error("Formato de imagen no soportado.")
+         return None
 
     # Redimensionar la imagen si no es 28x28
     if gray.shape != (28, 28):
-        st.write("Paso 3: Redimensionando la imagen a 28x28 píxeles...")
-        pil_img = Image.fromarray(gray.astype(np.uint8))  # Convertir a imagen PIL
-        pil_img_resized = pil_img.resize((28, 28), Image.Resampling.LANCZOS) # Redimensionar a 28x28
-        gray = np.array(pil_img_resized)
-        st.image(gray, caption='Imagen Redimensionada a 28x28', use_container_width=True)  # Mostrar imagen redimensionada
+        # Nota: Una redimensión simple puede distorsionar la imagen.
+        # Para mejor precisión, considera usar OpenCV o Pillow con interpolación.
+        # Aquí usamos un enfoque básico de numpy para mantener las dependencias mínimas.
+        # Si necesitas redimensionar, puedes usar:
+        # from PIL import Image
+        # pil_img = Image.fromarray(gray.astype(np.uint8))
+        # pil_img_resized = pil_img.resize((28, 28), Image.Resampling.LANCZOS) # o LUMINANCE, BILINEAR, etc.
+        # gray = np.array(pil_img_resized)
+        st.warning("La imagen no es 28x28 píxeles. No se realizará la redimensión automática.")
+        # Si decides redimensionar aquí, descomenta y usa la parte de PIL.
+        # Por ahora, si no es 28x28, podrías tener errores o resultados incorrectos
+        # a menos que tu modelo maneje diferentes tamaños. Asumimos 28x28 es requerido.
+        # Para este ejemplo, detendremos el proceso si no es 28x28.
+        return None
 
-    # Normalizar la imagen
+
     gray = gray.reshape(1, 28, 28, 1) # Añadir dimensiones de batch y canal
     gray = gray.astype(np.float32) / 255.0 # Normalizar
-    st.write("Imagen normalizada para la entrada del modelo.")
     return gray
 
 # Título de la app
@@ -78,7 +79,6 @@ if uploaded_file is not None:
             prediction = model.predict(processed_image)
             predicted_label = np.argmax(prediction)
             confidence = np.max(prediction) * 100 # Obtener confianza en porcentaje
-            st.write("Predicción realizada.")
 
         # Mostrar el resultado de la predicción en un formato destacado
         st.subheader("Resultado de la predicción:")
@@ -93,18 +93,19 @@ if uploaded_file is not None:
              prob_dict = {str(i): prob for i, prob in enumerate(probabilities)}
              st.json(prob_dict)
 
+
 # Información adicional y del proyecto (ahora en el cuerpo principal)
 st.markdown("---") # Separador visual
 
 st.header("Información del Proyecto")
 
 with st.expander("Ver detalles del proyecto"):
-    st.markdown(""" 
+    st.markdown("""
         **Objetivo del Proyecto:**
         El objetivo de este proyecto es desplegar una aplicación basada en Streamlit que permita predecir dígitos escritos a mano utilizando un modelo de red neuronal convolucional (CNN) entrenado con el conjunto de datos MNIST.
-        
+
         Este modelo fue entrenado usando la arquitectura LeNet-5 adaptada para el conjunto de datos MNIST.
-        
+
         **Cómo Usar la Aplicación:**
         1. Sube una imagen que contenga un dígito (debe ser en formato PNG, JPG o JPEG).
         2. La aplicación procesará la imagen y mostrará el dígito predicho por el modelo junto con la confianza.
