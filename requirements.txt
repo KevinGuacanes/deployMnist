@@ -5,5 +5,5 @@ matplotlib
 seaborn
 numpy
 imageio
-scipy 
-cv2
+scipy
+opencv-python-headless
