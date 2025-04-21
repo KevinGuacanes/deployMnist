@@ -2,8 +2,8 @@ import streamlit as st
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import load_model
-from PIL import Image, ImageOps
-import io
+import imageio
+from PIL import Image # Se utiliza para redimensionar imágenes
 
 # Configurar la página
 st.set_page_config(page_title="Reconocimiento de Dígitos MNIST", layout="centered")
@@ -14,66 +14,52 @@ try:
     st.success("Modelo cargado exitosamente.")
 except Exception as e:
     st.error(f"Error al cargar el modelo: {e}")
-    st.stop()  # Detiene la ejecución si no se carga el modelo
+    st.stop() # Detiene la ejecución si no se carga el modelo
 
-# Función para preprocesar la imagen - versión simplificada y robusta
+# Función para preprocesar la imagen
 def preprocess_image(uploaded_file):
     """
-    Preprocesa la imagen para que sea compatible con el modelo MNIST
-    usando métodos simples pero efectivos.
+    Lee una imagen subida, la convierte a escala de grises, la redimensiona
+    y la prepara para la entrada al modelo.
     """
-    # Leer la imagen con PIL (más simple y confiable)
-    image = Image.open(uploaded_file).convert('L')  # Convertir a escala de grises
-    st.image(image, caption='Imagen Original en Escala de Grises', use_container_width=True)
-    
-    # Invertir colores si es necesario (MNIST tiene dígitos blancos sobre fondo negro)
-    # Calcular el brillo promedio para decidir si invertir
-    img_array = np.array(image)
-    if np.mean(img_array) < 128:  # Si la imagen es predominantemente oscura
-        image = ImageOps.invert(image)
-        st.image(image, caption='Imagen con Colores Invertidos', use_container_width=True)
-    
-    # Aplicar umbral para mejorar el contraste (blanco y negro)
-    threshold = 100
-    img_array = np.array(image)
-    img_binary = np.where(img_array > threshold, 255, 0)
-    image = Image.fromarray(img_binary.astype('uint8'))
-    st.image(image, caption='Imagen Binarizada', use_container_width=True)
-    
-    # Recortar bordes blancos para centrar mejor el dígito
-    bbox = ImageOps.invert(image).getbbox()
-    if bbox:
-        image = image.crop(bbox)
-        st.image(image, caption='Dígito Recortado', use_container_width=True)
-    
-    # Crear una nueva imagen cuadrada con fondo negro
-    size = max(image.size)
-    new_image = Image.new('L', (size, size), 0)
-    
-    # Pegar la imagen original centrada
-    paste_x = (size - image.size[0]) // 2
-    paste_y = (size - image.size[1]) // 2
-    new_image.paste(image, (paste_x, paste_y))
-    st.image(new_image, caption='Dígito Centrado en Imagen Cuadrada', use_container_width=True)
-    
-    # Redimensionar a 20x20 manteniendo la proporción
-    resized_image = new_image.resize((20, 20), Image.LANCZOS)
-    
-    # Crear la imagen final de 28x28 con el dígito centrado (como en MNIST)
-    final_image = Image.new('L', (28, 28), 0)
-    paste_x = (28 - 20) // 2
-    paste_y = (28 - 20) // 2
-    final_image.paste(resized_image, (paste_x, paste_y))
-    st.image(final_image, caption='Imagen Final (28x28)', use_container_width=True)
-    
-    # Convertir a formato numpy y normalizar
-    img_array = np.array(final_image)
-    img_array = img_array / 255.0
-    
-    # Reformatear para el modelo (añadir dimensiones de batch y canal)
-    model_input = img_array.reshape(1, 28, 28, 1).astype('float32')
-    
-    return model_input
+    st.write("Paso 1: Cargando la imagen...")
+    img = imageio.imread(uploaded_file)
+    st.image(img, caption='Imagen Original', use_container_width=True)  # Mostrar imagen original
+
+    # Asegurarse de que la imagen es RGB si tiene 3 canales antes de convertir a gris
+    if len(img.shape) == 3 and img.shape[2] == 3:
+        st.write("Paso 2: Convirtiendo la imagen a escala de grises...")
+        gray = np.dot(img[...,:3], [0.299, 0.587, 0.114]) # Convertir a escala de grises
+        gray = gray / 255.0  # Normalizar entre 0 y 1
+        st.image(gray, caption='Imagen en Escala de Grises', use_container_width=True)  # Mostrar imagen en grises
+    elif len(img.shape) == 3 and img.shape[2] == 4: # Si es RGBA
+        st.write("Paso 2: Convirtiendo la imagen a escala de grises (ignorando canal alfa)...")
+        gray = np.dot(img[...,:3], [0.299, 0.587, 0.114]) # Ignorar canal alfa
+        gray = gray / 255.0  # Normalizar entre 0 y 1
+        st.image(gray, caption='Imagen en Escala de Grises', use_container_width=True)  # Mostrar imagen en grises
+    elif len(img.shape) == 2: # Si ya está en escala de grises
+        st.write("La imagen ya está en escala de grises.")
+        gray = img
+        gray = gray / 255.0  # Normalizar entre 0 y 1
+        st.image(gray, caption='Imagen en Escala de Grises', use_container_width=True)  # Mostrar imagen en grises
+    else:
+        st.error("Formato de imagen no soportado.")
+        return None
+
+    # Redimensionar la imagen si no es 28x28
+    if gray.shape != (28, 28):
+        st.write("Paso 3: Redimensionando la imagen a 28x28 píxeles...")
+        pil_img = Image.fromarray((gray * 255).astype(np.uint8))  # Convertir a imagen PIL (restaurando rango 0-255)
+        pil_img_resized = pil_img.resize((28, 28), Image.Resampling.LANCZOS) # Redimensionar a 28x28
+        gray = np.array(pil_img_resized)
+        gray = gray / 255.0  # Asegurarse de normalizar la imagen después de redimensionarla
+        st.image(gray, caption='Imagen Redimensionada a 28x28', use_container_width=True)  # Mostrar imagen redimensionada
+
+    # Normalizar la imagen para el modelo (si no lo hemos hecho ya)
+    gray = gray.reshape(1, 28, 28, 1) # Añadir dimensiones de batch y canal
+    gray = gray.astype(np.float32) # Normalizar entre 0 y 1 ya no es necesario, ya lo hicimos
+    st.write("Imagen normalizada para la entrada del modelo.")
+    return gray
 
 # Título de la app
 st.title('Reconocimiento de Dígitos con CNN - MNIST')
@@ -84,16 +70,19 @@ uploaded_file = st.file_uploader("Selecciona una imagen (PNG, JPG o JPEG)", type
 
 # Contenedor principal para mostrar imagen y predicción
 if uploaded_file is not None:
+    # Mostrar la imagen
+    st.image(uploaded_file, caption='Imagen Subida', use_container_width=True)
+
     # Procesar la imagen
-    with st.spinner('Procesando imagen...'):
-        processed_image = preprocess_image(uploaded_file)
+    processed_image = preprocess_image(uploaded_file)
 
     if processed_image is not None:
         # Realizar predicción
         with st.spinner('Realizando predicción...'):
             prediction = model.predict(processed_image)
             predicted_label = np.argmax(prediction)
-            confidence = np.max(prediction) * 100  # Obtener confianza en porcentaje
+            confidence = np.max(prediction) * 100 # Obtener confianza en porcentaje
+            st.write("Predicción realizada.")
 
         # Mostrar el resultado de la predicción en un formato destacado
         st.subheader("Resultado de la predicción:")
@@ -102,13 +91,14 @@ if uploaded_file is not None:
 
         # Opcional: Mostrar las probabilidades de cada dígito
         if st.checkbox("Mostrar probabilidades por dígito"):
-            st.write("Probabilidades para cada dígito:")
-            probabilities = prediction[0]
-            for i, prob in enumerate(probabilities):
-                st.write(f"Dígito {i}: {prob*100:.2f}%")
+             st.write("Probabilidades para cada dígito:")
+             probabilities = prediction[0]
+             # Crear un diccionario o lista de tuplas para facilitar la visualización
+             prob_dict = {str(i): prob for i, prob in enumerate(probabilities)}
+             st.json(prob_dict)
 
-# Información adicional y del proyecto
-st.markdown("---")  # Separador visual
+# Información adicional y del proyecto (ahora en el cuerpo principal)
+st.markdown("---") # Separador visual
 
 st.header("Información del Proyecto")
 
@@ -123,12 +113,6 @@ with st.expander("Ver detalles del proyecto"):
         1. Sube una imagen que contenga un dígito (debe ser en formato PNG, JPG o JPEG).
         2. La aplicación procesará la imagen y mostrará el dígito predicho por el modelo junto con la confianza.
         3. Opcionalmente, puedes ver las probabilidades que el modelo asignó a cada dígito.
-        
-        **Características del Preprocesamiento:**
-        - Conversión a escala de grises
-        - Binarización para mejorar contraste
-        - Recorte automático y centrado del dígito
-        - Formato compatible con el estándar MNIST (28x28 píxeles)
     """)
 
 st.header("Equipo de Desarrollo")
@@ -139,6 +123,6 @@ st.markdown("""
     - Sevilla Masciel
 """)
 
-st.markdown("---")  # Otro separador
+st.markdown("---") # Otro separador
 
-st.info("Esta aplicación utiliza un modelo de Deep Learning para reconocer dígitos escritos a mano.")
+st.info("Esta aplicación utiliza un modelo de Deep Learning para reconocer dígitos escritos a mano. ")
