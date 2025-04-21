@@ -2,7 +2,6 @@ import streamlit as st
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import load_model
-import matplotlib.pyplot as plt
 import imageio
 from PIL import Image # Se utiliza para redimensionar imágenes
 
@@ -25,18 +24,21 @@ def preprocess_image(uploaded_file):
     """
     st.write("Paso 1: Cargando la imagen...")
     img = imageio.imread(uploaded_file)
-    st.write("Imagen cargada con éxito.")
+    st.image(img, caption='Imagen Original', use_container_width=True)  # Mostrar imagen original
 
     # Asegurarse de que la imagen es RGB si tiene 3 canales antes de convertir a gris
     if len(img.shape) == 3 and img.shape[2] == 3:
         st.write("Paso 2: Convirtiendo la imagen a escala de grises...")
         gray = np.dot(img[...,:3], [0.299, 0.587, 0.114]) # Convertir a escala de grises
+        st.image(gray, caption='Imagen en Escala de Grises', use_container_width=True)  # Mostrar imagen en grises
     elif len(img.shape) == 3 and img.shape[2] == 4: # Si es RGBA
         st.write("Paso 2: Convirtiendo la imagen a escala de grises (ignorando canal alfa)...")
         gray = np.dot(img[...,:3], [0.299, 0.587, 0.114]) # Ignorar canal alfa
+        st.image(gray, caption='Imagen en Escala de Grises', use_container_width=True)  # Mostrar imagen en grises
     elif len(img.shape) == 2: # Si ya está en escala de grises
         st.write("La imagen ya está en escala de grises.")
         gray = img
+        st.image(gray, caption='Imagen en Escala de Grises', use_container_width=True)  # Mostrar imagen en grises
     else:
         st.error("Formato de imagen no soportado.")
         return None
@@ -47,7 +49,7 @@ def preprocess_image(uploaded_file):
         pil_img = Image.fromarray(gray.astype(np.uint8))  # Convertir a imagen PIL
         pil_img_resized = pil_img.resize((28, 28), Image.Resampling.LANCZOS) # Redimensionar a 28x28
         gray = np.array(pil_img_resized)
-        st.write("Imagen redimensionada exitosamente.")
+        st.image(gray, caption='Imagen Redimensionada a 28x28', use_container_width=True)  # Mostrar imagen redimensionada
 
     # Normalizar la imagen
     gray = gray.reshape(1, 28, 28, 1) # Añadir dimensiones de batch y canal
