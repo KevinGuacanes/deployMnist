@@ -6,3 +6,4 @@ seaborn
 numpy
 imageio
 scipy 
+cv2
