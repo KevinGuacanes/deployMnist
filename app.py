@@ -93,25 +93,15 @@ st.markdown("---") # Separador visual
 st.header("Información del Proyecto")
 
 with st.expander("Ver detalles del proyecto"):
-    st.markdown(""" 
-        **Objetivo del Proyecto:**
-        El objetivo de este proyecto es desplegar una aplicación basada en Streamlit que permita predecir dígitos escritos a mano utilizando un modelo de red neuronal convolucional (CNN) entrenado con el conjunto de datos MNIST.
-        
-        Este modelo fue entrenado usando la arquitectura LeNet-5 adaptada para el conjunto de datos MNIST.
-        
-        **Cómo Usar la Aplicación:**
-        1. Sube una imagen que contenga un dígito (debe ser en formato PNG, JPG o JPEG).
-        2. La aplicación procesará la imagen y mostrará el dígito predicho por el modelo junto con la confianza.
-        3. Puedes ver las probabilidades que el modelo asignó a cada dígito.
+    st.header("Equipo de Desarrollo")
+    st.markdown("""
+        - Flores Luis
+        - Guacanes Kevin
+        - Quilca Tatiana
+        - Sevilla Masciel
     """)
 
-st.header("Equipo de Desarrollo")
-st.markdown("""
-    - Flores Luis
-    - Guacanes Kevin
-    - Quilca Tatiana
-    - Sevilla Masciel
-""")
+
 
 st.markdown("---") # Otro separador
 
