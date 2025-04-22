@@ -140,9 +140,7 @@ with tab1:
 
 with tab2:
     st.markdown("""
-    ### Equipo de Desarrollo
-    
-    Este proyecto fue desarrollado por:
+    ### Integrantes
     
     - **Flores Luis**
     - **Guacanes Kevin**
