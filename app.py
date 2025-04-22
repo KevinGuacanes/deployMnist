@@ -114,7 +114,7 @@ if uploaded_file is not None:
 st.markdown("---")
 
 # Crear pestañas para organizar la información adicional
-tab1, tab2, tab3 = st.tabs(["📋 Información del Proyecto", "👨‍💻 Equipo de Desarrollo", "❓ Ayuda"])
+tab1, tab2, tab3 = st.tabs(["📋 Información del Proyecto", "👨‍💻 Equipo", "❓ Ayuda"])
 
 with tab1:
     st.markdown("""
