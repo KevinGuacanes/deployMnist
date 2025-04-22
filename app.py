@@ -5,16 +5,34 @@ from tensorflow.keras.models import load_model
 from PIL import Image, ImageOps
 import io
 
-# Configurar la página
-st.set_page_config(page_title="Reconocimiento de Dígitos MNIST", layout="centered")
+# Configurar la página con mejor apariencia
+st.set_page_config(
+    page_title="Reconocimiento de Dígitos MNIST", 
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
+# Título principal con estilo
+st.markdown("""
+    <h1 style='text-align: center; color: #2e6c80;'>Reconocimiento de Dígitos con CNN - MNIST</h1>
+    <p style='text-align: center; color: #5e5e5e;'>Una aplicación de Machine Learning para reconocer dígitos escritos a mano</p>
+    <hr>
+""", unsafe_allow_html=True)
 
 # Cargar el modelo (asegúrate de que la ruta sea correcta)
-try:
-    model = load_model('models/model_Mnist_LeNet.h5')
-    st.success("Modelo cargado exitosamente.")
-except Exception as e:
-    st.error(f"Error al cargar el modelo: {e}")
-    st.stop()  # Detiene la ejecución si no se carga el modelo
+@st.cache_resource
+def load_mnist_model():
+    try:
+        return load_model('models/model_Mnist_LeNet.h5')
+    except Exception as e:
+        st.error(f"Error al cargar el modelo: {e}")
+        return None
+
+model = load_mnist_model()
+if model is None:
+    st.stop()  # Detener la ejecución si no se carga el modelo
+else:
+    st.success("✅ Modelo cargado exitosamente.")
 
 # Función para preprocesar la imagen - versión simplificada
 def preprocess_image(uploaded_file):
@@ -22,22 +40,28 @@ def preprocess_image(uploaded_file):
     Lee una imagen subida, la convierte a escala de grises, la redimensiona
     y la prepara para la entrada al modelo.
     """
-    st.write("Paso 1: Cargando la imagen...")
-    image = Image.open(uploaded_file).convert('L')  # Convertir a escala de grises
-    st.image(image, caption='Imagen Original', use_container_width=True)
+    # Crear dos columnas para mostrar el proceso lado a lado
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("1️⃣ Imagen Original")
+        image = Image.open(uploaded_file).convert('L')  # Convertir a escala de grises
+        st.image(image, caption='Imagen subida convertida a escala de grises', use_container_width=True)
 
     # Invertir colores si es necesario (MNIST tiene dígitos blancos sobre fondo negro)
     img_array = np.array(image)
-    if np.mean(img_array) > 128:  # Si la imagen es predominantemente clara
-        st.write("Paso 2: Invirtiendo colores para ajustar al formato MNIST...")
-        image = ImageOps.invert(image)
-        st.image(image, caption='Imagen con Colores Invertidos', use_container_width=True)
-
-    # Redimensionar si no es 28x28
-    if image.size != (28, 28):
-        st.write("Paso 3: Redimensionando la imagen a 28x28 píxeles...")
-        image = image.resize((28, 28), Image.Resampling.LANCZOS)
-        st.image(image, caption='Imagen Redimensionada a 28x28', use_container_width=True)
+    with col2:
+        st.subheader("2️⃣ Imagen Procesada")
+        if np.mean(img_array) > 128:  # Si la imagen es predominantemente clara
+            image = ImageOps.invert(image)
+            st.info("Se invirtieron los colores para ajustar al formato MNIST")
+        
+        # Redimensionar si no es 28x28
+        if image.size != (28, 28):
+            image = image.resize((28, 28), Image.Resampling.LANCZOS)
+            st.info("Imagen redimensionada a 28x28 píxeles")
+        
+        st.image(image, caption='Imagen lista para el modelo', use_container_width=True)
 
     # Normalizar la imagen para el modelo
     img_array = np.array(image)
@@ -45,16 +69,15 @@ def preprocess_image(uploaded_file):
     
     # Reformatear para la entrada del modelo
     img_array = img_array.reshape(1, 28, 28, 1)
-    st.write("Imagen normalizada para la entrada del modelo.")
     
     return img_array
 
-# Título de la app
-st.title('Reconocimiento de Dígitos con CNN - MNIST')
+# Crear un diseño de dos columnas para la carga y resultados
+col_upload, col_result = st.columns([1, 2])
 
-# Espacio para subir la imagen
-st.header("Sube una imagen del dígito")
-uploaded_file = st.file_uploader("Selecciona una imagen (PNG, JPG o JPEG)", type=["png", "jpg", "jpeg"])
+with col_upload:
+    st.subheader("📤 Cargar Imagen")
+    uploaded_file = st.file_uploader("Selecciona una imagen de un dígito", type=["png", "jpg", "jpeg"])
 
 # Contenedor principal para mostrar imagen y predicción
 if uploaded_file is not None:
@@ -63,46 +86,91 @@ if uploaded_file is not None:
 
     if processed_image is not None:
         # Realizar predicción
-        with st.spinner('Realizando predicción...'):
+        with st.spinner('Analizando imagen...'):
             prediction = model.predict(processed_image)
             predicted_label = np.argmax(prediction)
             confidence = np.max(prediction) * 100  # Obtener confianza en porcentaje
-            st.write("Predicción realizada.")
 
-        # Mostrar el resultado de la predicción en un formato destacado
-        st.subheader("Resultado de la predicción:")
-        st.success(f"El dígito predicho es: **{predicted_label}**")
-        st.info(f"Confianza del modelo: **{confidence:.2f}%**")
-
-        # Mostrar las probabilidades de cada dígito
-        st.subheader("Probabilidades para cada dígito:")
-        probabilities = prediction[0]
+        # Mostrar resultados en una sección destacada
+        st.markdown("---")
+        st.markdown("<h2 style='text-align: center; color: #2e6c80;'>Resultados del Análisis</h2>", unsafe_allow_html=True)
         
-        # Crear un gráfico de barras
-        chart_data = {str(i): float(prob) for i, prob in enumerate(probabilities)}
-        st.bar_chart(chart_data)
+        # Dividir en columnas para resultados
+        col1, col2 = st.columns(2)
         
-        # Mostrar también los valores numéricos
-        st.write("Valores numéricos de probabilidad:")
-        for i, prob in enumerate(probabilities):
-            st.write(f"Dígito {i}: {prob*100:.2f}%")
+        with col1:
+            st.markdown(f"""
+            <div style='background-color: #f0f2f6; padding: 20px; border-radius: 10px; text-align: center;'>
+                <h1 style='font-size: 80px; color: #2e6c80;'>{predicted_label}</h1>
+                <p style='font-size: 18px;'>Dígito Predicho</p>
+                <p style='font-size: 16px; color: #5e5e5e;'>Confianza: {confidence:.2f}%</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.subheader("Distribución de Probabilidades")
+            
+            # Crear un gráfico de barras para las probabilidades
+            chart_data = {str(i): float(prob) for i, prob in enumerate(prediction[0])}
+            st.bar_chart(chart_data)
+            
+            # Mostrar la tabla de probabilidades
+            st.subheader("Tabla de Probabilidades")
+            prob_df = {"Dígito": list(range(10)), "Probabilidad (%)": [p*100 for p in prediction[0]]}
+            st.dataframe(prob_df, use_container_width=True)
 
-# Información adicional y del proyecto (ahora en el cuerpo principal)
-st.markdown("---") # Separador visual
+# Información del proyecto en tarjetas organizadas
+st.markdown("---")
 
-st.header("Información del Proyecto")
+# Crear pestañas para organizar la información adicional
+tab1, tab2, tab3 = st.tabs(["📋 Información del Proyecto", "👨‍💻 Equipo de Desarrollo", "❓ Ayuda"])
 
-with st.expander("Ver detalles del proyecto"):
-    st.header("Equipo de Desarrollo")
+with tab1:
     st.markdown("""
-        - Flores Luis
-        - Guacanes Kevin
-        - Quilca Tatiana
-        - Sevilla Masciel
+    ### Objetivo del Proyecto
+    
+    Este proyecto implementa una aplicación basada en Streamlit que permite reconocer dígitos escritos a mano utilizando una Red Neuronal Convolucional (CNN) entrenada con el conjunto de datos MNIST.
+    
+    ### Características
+    
+    - **Arquitectura:** LeNet-5 adaptada para el conjunto de datos MNIST
+    - **Preprocesamiento de imágenes:** Conversión a escala de grises, redimensionamiento e inversión de colores cuando sea necesario
+    - **Visualización:** Muestra las probabilidades para cada dígito y la confianza del modelo
     """)
 
+with tab2:
+    st.markdown("""
+    ### Equipo de Desarrollo
+    
+    Este proyecto fue desarrollado por:
+    
+    - **Flores Luis** - Desarrollo de la arquitectura del modelo
+    - **Guacanes Kevin** - Implementación de la interfaz de usuario
+    - **Quilca Tatiana** - Preprocesamiento de imágenes y optimización
+    - **Sevilla Masciel** - Evaluación del modelo y testing
+    """)
 
+with tab3:
+    st.markdown("""
+    ### Cómo Usar la Aplicación
+    
+    1. **Carga una imagen** que contenga un solo dígito escrito a mano (formatos: PNG, JPG o JPEG)
+    2. La aplicación **procesará automáticamente** la imagen para que sea compatible con el formato MNIST
+    3. El modelo realizará la **predicción** y mostrará el dígito reconocido
+    4. Podrás ver la **distribución de probabilidades** que el modelo asignó a cada dígito
+    
+    ### Mejores Prácticas
+    
+    - Usa imágenes con fondos claros y dígitos oscuros para mejores resultados
+    - Si los resultados no son precisos, intenta mejorar la calidad de la imagen o usar un dígito más claramente definido
+    - El modelo funciona mejor con dígitos escritos a mano similares al estilo del dataset MNIST
+    """)
 
-st.markdown("---") # Otro separador
-
-st.info("Esta aplicación utiliza un modelo de Deep Learning para reconocer dígitos escritos a mano.")
+# Pie de página
+st.markdown("---")
+st.markdown("""
+<div style='text-align: center; color: #5e5e5e;'>
+    <p>Desarrollado con ❤️ usando TensorFlow y Streamlit</p>
+    <p>© 2023 - Universidad Técnica del Norte</p>
+</div>
+""", unsafe_allow_html=True)
