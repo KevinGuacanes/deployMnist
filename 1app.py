@@ -90,10 +90,9 @@ if uploaded_file is not None:
 # Información adicional y del proyecto (ahora en el cuerpo principal)
 st.markdown("---") # Separador visual
 
-st.header("Información del Proyecto")
+st.header("Estudiantes")
 
-with st.expander("Ver detalles del proyecto"):
-    st.header("Equipo de Desarrollo")
+with st.expander("Ver "):
     st.markdown("""
         - Flores Luis
         - Guacanes Kevin

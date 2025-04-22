@@ -144,10 +144,10 @@ with tab2:
     
     Este proyecto fue desarrollado por:
     
-    - **Flores Luis** - Desarrollo de la arquitectura del modelo
-    - **Guacanes Kevin** - Implementación de la interfaz de usuario
-    - **Quilca Tatiana** - Preprocesamiento de imágenes y optimización
-    - **Sevilla Masciel** - Evaluación del modelo y testing
+    - **Flores Luis**
+    - **Guacanes Kevin**
+    - **Quilca Tatiana**
+    - **Sevilla Masciel**
     """)
 
 with tab3:
@@ -166,11 +166,3 @@ with tab3:
     - El modelo funciona mejor con dígitos escritos a mano similares al estilo del dataset MNIST
     """)
 
-# Pie de página
-st.markdown("---")
-st.markdown("""
-<div style='text-align: center; color: #5e5e5e;'>
-    <p>Desarrollado con ❤️ usando TensorFlow y Streamlit</p>
-    <p>© 2023 - Universidad Técnica del Norte</p>
-</div>
-""", unsafe_allow_html=True)
