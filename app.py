@@ -93,7 +93,7 @@ if uploaded_file is not None:
         st.markdown(f"""
         <div style='background-color: #f0f2f6; padding: 20px; border-radius: 10px; text-align: center; width: 50%; margin: 0 auto;'>
             <h1 style='font-size: 80px; color: #2e6c80;'>{predicted_label}</h1>
-            <p style='font-size: 18px;'>Dígito Predicho</p>
+            <p style='font-size: 18px; color: black;'>Dígito Predicho</p>
             <p style='font-size: 16px; color: #5e5e5e;'>Confianza: {confidence:.2f}%</p>
         </div>
         """, unsafe_allow_html=True)
