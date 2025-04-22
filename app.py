@@ -2,11 +2,8 @@ import streamlit as st
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import load_model
-import imageio.v2 as imageio
-from PIL import Image
-from skimage.transform import resize
-from scipy import ndimage
-import matplotlib.pyplot as plt
+from PIL import Image, ImageOps, ImageFilter, ImageEnhance
+import io
 
 # Configurar la página
 st.set_page_config(page_title="Reconocimiento de Dígitos MNIST", layout="centered")
@@ -17,63 +14,143 @@ try:
     st.success("Modelo cargado exitosamente.")
 except Exception as e:
     st.error(f"Error al cargar el modelo: {e}")
-    st.stop() # Detiene la ejecución si no se carga el modelo
+    st.stop()  # Detiene la ejecución si no se carga el modelo
 
-# Función para preprocesar la imagen
+# Función para preprocesar la imagen - versión extremadamente robusta
 def preprocess_image(uploaded_file):
     """
-    Preprocesa una imagen para que coincida con el formato MNIST.
-    
-    Incluye:
-    - Conversión a escala de grises
-    - Redimensionamiento a 28x28
-    - Normalización de valores
-    - Inversión automática si es necesario
-    - Centrado mediante el centro de masa
+    Preprocesa cualquier tipo de imagen para hacerla compatible con el modelo MNIST,
+    incluso imágenes de muy baja calidad o con estilos muy diferentes.
     """
-    st.write("Paso 1: Cargando la imagen...")
-    im = imageio.imread(uploaded_file)
-    st.image(im, caption='Imagen Original', use_container_width=True)
+    # Leer la imagen con PIL
+    image = Image.open(uploaded_file)
     
-    # Convertir a escala de grises si es necesario
-    if len(im.shape) > 2:
-        st.write("Paso 2: Convirtiendo la imagen a escala de grises...")
-        gray = np.dot(im[...,:3], [0.299, 0.587, 0.114])
+    # Mostrar imagen original
+    st.image(image, caption='Imagen Original', use_container_width=True)
+    
+    # Convertir a escala de grises si no lo está ya
+    if image.mode != 'L':
+        image = image.convert('L')
+        st.image(image, caption='Imagen en Escala de Grises', use_container_width=True)
+    
+    # Aplicar filtros de mejora
+    # 1. Aumentar contraste
+    enhancer = ImageEnhance.Contrast(image)
+    image = enhancer.enhance(2.0)  # Aumentar contraste al doble
+    
+    # 2. Suavizar para reducir ruido
+    image = image.filter(ImageFilter.GaussianBlur(radius=0.5))
+    
+    # 3. Aplicar umbral adaptativo
+    # Primero convertimos a array numpy para manipulación más flexible
+    img_array = np.array(image)
+    
+    # Calcular umbral dinámico basado en el histograma (método Otsu simplificado)
+    hist = np.histogram(img_array, bins=256, range=(0, 256))[0]
+    total = hist.sum()
+    sumB = 0
+    wB = 0
+    maximum = 0
+    threshold = 0
+    
+    for i in range(256):
+        wB += hist[i]
+        if wB == 0:
+            continue
+        wF = total - wB
+        if wF == 0:
+            break
+        
+        sumB += i * hist[i]
+        mB = sumB / wB
+        mF = (total - sumB) / wF
+        
+        between = wB * wF * (mB - mF) ** 2
+        
+        if between > maximum:
+            maximum = between
+            threshold = i
+    
+    # Aplicar umbral para binarizar
+    img_binary = np.where(img_array > threshold, 255, 0).astype(np.uint8)
+    image = Image.fromarray(img_binary)
+    st.image(image, caption='Imagen Binarizada con Umbral Adaptativo', use_container_width=True)
+    
+    # Invertir colores si es necesario (MNIST tiene dígitos blancos sobre fondo negro)
+    # Verificamos la distribución de píxeles para decidir
+    pixel_sum = np.sum(img_binary)
+    total_pixels = img_binary.size
+    
+    # Si hay más pixeles blancos que negros, invertimos
+    if pixel_sum > (total_pixels * 255 * 0.5):
+        image = ImageOps.invert(image)
+        st.image(image, caption='Imagen con Colores Invertidos', use_container_width=True)
+    
+    # Eliminar pequeños ruidos (operación morfológica de apertura)
+    image = image.filter(ImageFilter.MinFilter(3))
+    image = image.filter(ImageFilter.MaxFilter(3))
+    st.image(image, caption='Imagen con Ruido Reducido', use_container_width=True)
+    
+    # Recortar bordes blancos para centrar mejor el dígito
+    # Usamos invert para encontrar el bounding box
+    bbox = ImageOps.invert(image).getbbox()
+    
+    if bbox:
+        image = image.crop(bbox)
+        st.image(image, caption='Dígito Recortado', use_container_width=True)
     else:
-        st.write("La imagen ya está en escala de grises.")
-        gray = im
+        st.warning("No se pudo detectar un contorno claro. Usando imagen completa.")
     
-    st.image(gray, caption='Imagen en Escala de Grises', use_container_width=True)
+    # Agregar un pequeño padding
+    border = 10
+    width, height = image.size
+    new_img = Image.new('L', (width + 2*border, height + 2*border), 0)
+    new_img.paste(image, (border, border))
+    image = new_img
     
-    # Redimensionar a 28x28
-    st.write("Paso 3: Redimensionando la imagen a 28x28 píxeles...")
-    gray = resize(gray, (28, 28), anti_aliasing=True)
-    st.image(gray, caption='Imagen Redimensionada a 28x28', use_container_width=True)
+    # Crear una nueva imagen cuadrada
+    size = max(image.size)
+    square_img = Image.new('L', (size, size), 0)
     
-    # Normalizar los valores a [0,1]
-    gray = gray.astype('float32')
-    gray /= 255.0
+    # Pegar la imagen original centrada
+    paste_x = (size - image.size[0]) // 2
+    paste_y = (size - image.size[1]) // 2
+    square_img.paste(image, (paste_x, paste_y))
+    st.image(square_img, caption='Dígito Centrado en Imagen Cuadrada', use_container_width=True)
     
-    # Invertir la imagen si es necesario (si el fondo es más oscuro que el dígito)
-    if gray.mean() > 0.5:
-        st.write("Paso 4: Invirtiendo la imagen (fondo claro, dígito oscuro)...")
-        gray = 1.0 - gray
-        st.image(gray, caption='Imagen Invertida', use_container_width=True)
+    # Redimensionar a 20x20 manteniendo la proporción
+    resized_img = square_img.resize((20, 20), Image.Resampling.LANCZOS)
     
-    # Agregar padding y centrar la imagen mediante el centro de masa
-    st.write("Paso 5: Centrando el dígito usando el centro de masa...")
-    cy, cx = ndimage.center_of_mass(gray)
-    rows, cols = gray.shape
-    shift_y = rows // 2 - cy
-    shift_x = cols // 2 - cx
-    gray = ndimage.shift(gray, (shift_y, shift_x), cval=0)
-    st.image(gray, caption='Imagen Centrada', use_container_width=True)
+    # Crear la imagen final de 28x28 con el dígito centrado (como en MNIST)
+    final_img = Image.new('L', (28, 28), 0)
+    paste_x = (28 - 20) // 2
+    paste_y = (28 - 20) // 2
+    final_img.paste(resized_img, (paste_x, paste_y))
+    st.image(final_img, caption='Imagen Final (28x28)', use_container_width=True)
     
-    # Redimensionar para el modelo
-    st.write("Paso 6: Preparando la imagen para el modelo...")
-    gray_for_model = gray.reshape(1, 28, 28, 1)
+    # Mejorar imagen final con filtro de nitidez
+    final_img = final_img.filter(ImageFilter.SHARPEN)
+    st.image(final_img, caption='Imagen Final con Nitidez Mejorada', use_container_width=True)
     
-    return gray_for_model
+    # Convertir a formato numpy y normalizar
+    img_array = np.array(final_img)
+    img_array = img_array / 255.0
+    
+    # Reformatear para el modelo (añadir dimensiones de batch y canal)
+    model_input = img_array.reshape(1, 28, 28, 1).astype('float32')
+    
+    return model_input
+
+# Función para mostrar las probabilidades como gráfico de barras
+def display_prediction_chart(prediction):
+    # Crear datos para el gráfico
+    probs = prediction[0] * 100  # Convertir a porcentaje
+    
+    # Crear diccionario para el gráfico
+    chart_data = {str(i): float(prob) for i, prob in enumerate(probs)}
+    
+    # Mostrar gráfico
+    st.bar_chart(chart_data)
 
 # Título de la app
 st.title('Reconocimiento de Dígitos con CNN - MNIST')
@@ -85,52 +162,42 @@ uploaded_file = st.file_uploader("Selecciona una imagen (PNG, JPG o JPEG)", type
 # Contenedor principal para mostrar imagen y predicción
 if uploaded_file is not None:
     # Procesar la imagen
-    processed_image = preprocess_image(uploaded_file)
+    with st.spinner('Procesando imagen...'):
+        processed_image = preprocess_image(uploaded_file)
 
     if processed_image is not None:
         # Realizar predicción
         with st.spinner('Realizando predicción...'):
             prediction = model.predict(processed_image)
             predicted_label = np.argmax(prediction)
-            confidence = np.max(prediction) * 100 # Obtener confianza en porcentaje
-            st.write("Predicción realizada.")
+            confidence = np.max(prediction) * 100  # Obtener confianza en porcentaje
 
         # Mostrar el resultado de la predicción en un formato destacado
         st.subheader("Resultado de la predicción:")
         st.success(f"El dígito predicho es: **{predicted_label}**")
         st.info(f"Confianza del modelo: **{confidence:.2f}%**")
 
-        # Opcional: Mostrar las probabilidades de cada dígito
-        if st.checkbox("Mostrar probabilidades por dígito"):
-             st.write("Probabilidades para cada dígito:")
-             probabilities = prediction[0]
-             # Crear un diccionario o lista de tuplas para facilitar la visualización
-             prob_dict = {str(i): f"{prob*100:.2f}%" for i, prob in enumerate(probabilities)}
-             st.json(prob_dict)
+        # Mostrar probabilidades como gráfico de barras
+        st.subheader("Probabilidades por dígito:")
+        display_prediction_chart(prediction)
+        
+        # Opción para ver los valores exactos
+        if st.checkbox("Mostrar valores numéricos de probabilidad"):
+            st.write("Probabilidades detalladas:")
+            for i, prob in enumerate(prediction[0]):
+                st.write(f"Dígito {i}: {prob*100:.2f}%")
 
-# Información adicional y del proyecto (ahora en el cuerpo principal)
-st.markdown("---") # Separador visual
+# Información adicional y del proyecto
+st.markdown("---")  # Separador visual
 
 st.header("Información del Proyecto")
 
 with st.expander("Ver detalles del proyecto"):
     st.markdown(""" 
-        **Objetivo del Proyecto:**
-        El objetivo de este proyecto es desplegar una aplicación basada en Streamlit que permita predecir dígitos escritos a mano utilizando un modelo de red neuronal convolucional (CNN) entrenado con el conjunto de datos MNIST.
-        
-        Este modelo fue entrenado usando la arquitectura LeNet-5 adaptada para el conjunto de datos MNIST.
-        
-        **Características del Preprocesamiento:**
-        - Conversión a escala de grises
-        - Redimensionamiento a 28x28 píxeles
-        - Normalización de valores
-        - Inversión automática (si el fondo es más claro que el dígito)
-        - Centrado automático del dígito mediante el centro de masa
-        
         **Cómo Usar la Aplicación:**
         1. Sube una imagen que contenga un dígito (debe ser en formato PNG, JPG o JPEG).
         2. La aplicación procesará la imagen y mostrará el dígito predicho por el modelo junto con la confianza.
-        3. Opcionalmente, puedes ver las probabilidades que el modelo asignó a cada dígito.
+        3. Puedes ver las probabilidades que el modelo asignó a cada dígito mediante un gráfico de barras.
     """)
 
 st.header("Equipo de Desarrollo")
@@ -141,6 +208,6 @@ st.markdown("""
     - Sevilla Masciel
 """)
 
-st.markdown("---") # Otro separador
+st.markdown("---")  # Otro separador
 
 st.info("Esta aplicación utiliza un modelo de Deep Learning para reconocer dígitos escritos a mano.")
